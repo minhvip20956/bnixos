@@ -1,0 +1,58 @@
+You are a senior NixOS engineer working inside this VS Code workspace (repo bnixos).
+
+TASK: Implement the following changes in the existing bnixos ISO builder project, then commit and push.
+
+REQUIREMENTS TO IMPLEMENT:
+
+1) Preinstall office + browser for EACH USER (per-user, not system-wide):
+- On first login for any user, automatically install via Flatpak --user:
+  - org.libreoffice.LibreOffice
+  - org.chromium.Chromium
+- Also ensure Flathub remote exists for the user
+- Must be idempotent (use a marker file under ~/.config/bnixos/.flatpak_bootstrapped)
+- Must not require sudo
+- Must not break offline boot (if network unavailable, exit cleanly and retry on next login)
+
+2) Vietnamese input method:
+- Enable IBus with Bamboo as the default IM framework
+- Ensure packages are included so GNOME can use it immediately
+
+3) GNOME “less technical” menu, but keep essential features:
+- Keep GNOME Settings, Files, GNOME Software, networking, bluetooth, printers, etc.
+- Remove/hide technical tools from the default menu by excluding these GNOME packages:
+  - gnome-terminal
+  - gnome-system-monitor
+  - gnome-logs
+  - gnome-disk-utility
+  - gnome-connections
+- Disable GNOME command-line prompt (Alt+F2 / run command) via dconf:
+  - org/gnome/desktop/lockdown disable-command-line = true
+- Ensure programs.dconf.enable = true
+
+FILES TO MODIFY (use existing structure; create module if missing but prefer modifying):
+- modules/snap-flatpak.nix  (add flatpak bootstrap user service + ensure gnome-software + portals)
+- modules/desktop.nix       (add ibus + bamboo)
+- modules/hardening.nix     (gnome exclude packages + dconf lockdown)
+
+SNAP RULE:
+- Snap is enabled and USERS ARE ALLOWED TO INSTALL SNAP APPS.
+- Do NOT add any restriction to snap install or snapctl.
+
+QUALITY RULES:
+- Use valid Nix syntax.
+- Keep changes minimal, clean, production-ready.
+- Add English comments inside code where useful.
+- After modifications, run:
+  - nix fmt (if available) OR format reasonably
+  - nix flake check (if feasible) OR at least ensure `nix eval` sanity on the iso configuration
+
+GIT:
+- git status
+- git add -A
+- git commit -m "Add per-user baseline apps, Vietnamese input, and GNOME lockdown"
+- git push -u origin HEAD
+
+OUTPUT:
+- Show the final repo tree and the final diffs/changed file contents.
+
+START NOW.
