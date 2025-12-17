@@ -1,68 +1,162 @@
-You are a senior NixOS engineer. Work ONLY inside this VS Code workspace (repo bnixos).
-DO NOT run any git commands. Do NOT commit or push. Just create/modify files.
+You are a senior NixOS infrastructure engineer.
 
-GOAL:
-Implement:
-- GNOME + GDM (Wayland) installer ISO (Calamares) remains working
-- Snap enabled and users are allowed to install snap apps (NO restrictions)
-- Flatpak enabled with GNOME Software + proper portals
-- Per-user baseline apps: LibreOffice + Chromium installed automatically on first login via Flatpak --user
-- Vietnamese input method: IBus + Bamboo
-- GNOME less “technical”: hide technical tools but keep essential functionality
+WORK MODE:
+- Work ONLY inside this VS Code workspace (repo bnixos).
+- The repository is EMPTY.
+- CREATE and MODIFY files directly in the workspace.
+- DO NOT run git commands.
+- DO NOT commit or push.
+- Output files by writing them into the workspace, not paste-only.
 
-REQUIREMENTS (IMPLEMENT EXACTLY):
+====================================================
+GOAL
+====================================================
+Create a COMPLETE, PRODUCTION-READY NixOS INSTALLER ISO project
+for enterprise laptops.
 
-1) Per-user baseline apps (Flatpak):
-- On first login for ANY user, auto-install via Flatpak --user:
-  - org.libreoffice.LibreOffice
-  - org.chromium.Chromium
-- Add Flathub per-user remote if missing:
-  - https://dl.flathub.org/repo/flathub.flatpakrepo
-- Must be idempotent: create marker file:
-  - ~/.config/bnixos/.flatpak_bootstrapped
-- Must NOT require sudo
-- Must be safe offline:
-  - If network unavailable, exit 0 (no failure loops), and retry next login
+The result must be:
+- A graphical NixOS installer ISO (Calamares)
+- USB + EFI bootable
+- After install: immutable, IT-controlled, user-safe
+- Ready to build ISO immediately with one nix build command
 
-2) Vietnamese typing:
-- Enable IBus and Bamboo engine system-wide so GNOME can use it immediately:
-  - i18n.inputMethod.enabled = "ibus"
-  - include bamboo engine
+====================================================
+BASE SYSTEM
+====================================================
+- OS: NixOS 24.05 or newer
+- Flakes ONLY (no channels)
+- systemd-boot (UEFI)
+- Rollback enabled, keep last 3 generations
+- AppArmor enabled
 
-3) GNOME lockdown / de-tech menu:
-- Keep Settings, Files, GNOME Software, networking, bluetooth, printers.
-- Exclude these packages from GNOME default menu:
+====================================================
+DESKTOP
+====================================================
+- GNOME (Wayland)
+- GDM display manager
+- GNOME stable from nixpkgs (no beta, no nightly)
+
+====================================================
+USERS
+====================================================
+- root:
+  - Fixed password hash (placeholder OK)
+- staff:
+  - Normal user
+  - NO sudo
+  - Cannot run nix commands
+
+====================================================
+APPLICATION MODEL
+====================================================
+SNAP:
+- Enable snapd
+- Users ARE ALLOWED to install snap apps
+- Do NOT restrict snap install or snapctl
+- Enable squashfs + AppArmor
+
+FLATPAK:
+- Enable Flatpak
+- Enable GNOME Software
+- Enable xdg-desktop-portal for GNOME
+- User-level Flatpak installs must work
+
+BASELINE APPS (VERY IMPORTANT):
+- For EACH USER, on FIRST LOGIN only:
+  - Automatically install via Flatpak --user:
+    - org.libreoffice.LibreOffice
+    - org.chromium.Chromium
+  - Add Flathub remote if missing:
+    https://dl.flathub.org/repo/flathub.flatpakrepo
+  - Must be idempotent using marker file:
+    ~/.config/bnixos/.flatpak_bootstrapped
+  - Must NOT require sudo
+  - Must be SAFE when offline (exit cleanly, retry next login)
+
+====================================================
+VIETNAMESE INPUT
+====================================================
+- Enable IBus as input method framework
+- Enable Bamboo engine
+- Must work immediately in GNOME
+- Telex / VNI supported
+
+====================================================
+GNOME LOCKDOWN (USER-FRIENDLY)
+====================================================
+- Keep essential features:
+  - Settings
+  - Files
+  - GNOME Software
+  - Networking / Bluetooth / Printers
+- Remove / hide technical tools by excluding:
   - gnome-terminal
   - gnome-system-monitor
   - gnome-logs
   - gnome-disk-utility
   - gnome-connections
-- Disable “Run command” (Alt+F2) via dconf:
+- Disable GNOME command prompt (Alt+F2):
   - org/gnome/desktop/lockdown disable-command-line = true
-- Ensure:
-  - programs.dconf.enable = true
+- Ensure programs.dconf.enable = true
 
-FILES / STRUCTURE:
-Use existing structure if present; if missing, create:
+====================================================
+IT-CONTROLLED UPDATE MODEL (CRITICAL)
+====================================================
+- Implement pull-based update agent:
+  - systemd oneshot service + timer
+  - Runs as root
+  - Polls THIS EXACT URL for version flag:
+    https://raw.githubusercontent.com/minhvip20956/bnixos/main/version.txt
+  - Add cache-bypass query (?t=timestamp)
+  - If remote version != local version:
+    - nix flake update /etc/nixos
+    - nixos-rebuild switch --flake /etc/nixos#$(hostname)
+    - Store version in: /var/lib/it-update/version
+  - Must be SAFE when offline (no failure loops)
+
+====================================================
+INSTALLER ISO
+====================================================
+- Use Calamares graphical installer
+- Import:
+  <nixpkgs/nixos/modules/installer/cd-dvd/installation-cd-graphical-calamares.nix>
+- ISO filename:
+  bnixos-installer.iso
+- EFI + USB bootable
+
+====================================================
+FILES / STRUCTURE TO CREATE
+====================================================
 - flake.nix
-- iso.nix (imports installation-cd-graphical-calamares.nix)
+- iso.nix
+- version.txt (initial content example: 2025-12-18-prod-001)
 - modules/
   - base.nix
-  - desktop.nix            (IBus + Bamboo here)
+  - desktop.nix
   - users.nix
-  - snap-flatpak.nix       (Flatpak+GNOME Software+portal + per-user bootstrap service here)
+  - snap-flatpak.nix
   - update-agent.nix
-  - hardening.nix          (GNOME exclude packages + dconf lockdown here)
-- version.txt (keep existing if already present)
+  - hardening.nix
+- README.md with:
+  - How to install Nix on Rocky Linux
+  - How to enable flakes
+  - Exact nix build command
+  - Where the ISO output is located
 
-SNAP RULE:
-- Enable snapd (services.snap.enable = true)
-- Enable AppArmor + squashfs
-- DO NOT restrict snap install / snapctl in any way.
+====================================================
+QUALITY RULES
+====================================================
+- Valid Nix syntax ONLY
+- Clean, production-ready code
+- English comments inside code
+- No TODOs (except password hash)
+- Do NOT ask questions
+- Do NOT explain concepts
 
-OUTPUT FORMAT:
-- First show the final repository tree.
-- Then output the full content of each file you created/modified.
-- No explanations, no questions.
+====================================================
+OUTPUT
+====================================================
+1) Show final repository tree
+2) Output FULL content of each created/modified file
 
 START NOW.
