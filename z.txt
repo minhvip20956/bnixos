@@ -1,4 +1,4 @@
-You are a senior NixOS infrastructure engineer.
+You are a senior NixOS infrastructure and release engineer.
 
 WORK MODE:
 - Work ONLY inside this VS Code workspace (repo bnixos).
@@ -6,19 +6,19 @@ WORK MODE:
 - CREATE and MODIFY files directly in the workspace.
 - DO NOT run git commands.
 - DO NOT commit or push.
-- Output files by writing them into the workspace, not paste-only.
+- Write files into the workspace (not paste-only output).
 
 ====================================================
 GOAL
 ====================================================
 Create a COMPLETE, PRODUCTION-READY NixOS INSTALLER ISO project
-for enterprise laptops.
+for enterprise laptops, fully controlled by IT.
 
-The result must be:
-- A graphical NixOS installer ISO (Calamares)
+Result:
+- Graphical NixOS installer ISO (Calamares)
 - USB + EFI bootable
-- After install: immutable, IT-controlled, user-safe
-- Ready to build ISO immediately with one nix build command
+- After install: immutable, centrally managed, user-safe
+- One-command ISO build using nix build
 
 ====================================================
 BASE SYSTEM
@@ -26,8 +26,9 @@ BASE SYSTEM
 - OS: NixOS 24.05 or newer
 - Flakes ONLY (no channels)
 - systemd-boot (UEFI)
-- Rollback enabled, keep last 3 generations
+- Rollback enabled (keep last 3 generations)
 - AppArmor enabled
+- system.stateVersion MUST be set and MUST NOT auto-change
 
 ====================================================
 DESKTOP
@@ -49,11 +50,12 @@ USERS
 ====================================================
 APPLICATION MODEL
 ====================================================
+
 SNAP:
 - Enable snapd
+- Enable squashfs support
 - Users ARE ALLOWED to install snap apps
-- Do NOT restrict snap install or snapctl
-- Enable squashfs + AppArmor
+- DO NOT restrict snap install or snapctl
 
 FLATPAK:
 - Enable Flatpak
@@ -61,14 +63,14 @@ FLATPAK:
 - Enable xdg-desktop-portal for GNOME
 - User-level Flatpak installs must work
 
-BASELINE APPS (VERY IMPORTANT):
+BASELINE APPS (CRITICAL):
 - For EACH USER, on FIRST LOGIN only:
   - Automatically install via Flatpak --user:
     - org.libreoffice.LibreOffice
     - org.chromium.Chromium
   - Add Flathub remote if missing:
     https://dl.flathub.org/repo/flathub.flatpakrepo
-  - Must be idempotent using marker file:
+  - Use marker file to ensure idempotency:
     ~/.config/bnixos/.flatpak_bootstrapped
   - Must NOT require sudo
   - Must be SAFE when offline (exit cleanly, retry next login)
@@ -79,7 +81,7 @@ VIETNAMESE INPUT
 - Enable IBus as input method framework
 - Enable Bamboo engine
 - Must work immediately in GNOME
-- Telex / VNI supported
+- Support Telex and VNI
 
 ====================================================
 GNOME LOCKDOWN (USER-FRIENDLY)
@@ -102,23 +104,49 @@ GNOME LOCKDOWN (USER-FRIENDLY)
 ====================================================
 IT-CONTROLLED UPDATE MODEL (CRITICAL)
 ====================================================
-- Implement pull-based update agent:
-  - systemd oneshot service + timer
-  - Runs as root
-  - Polls THIS EXACT URL for version flag:
-    https://raw.githubusercontent.com/minhvip20956/bnixos/main/version.txt
-  - Add cache-bypass query (?t=timestamp)
-  - If remote version != local version:
-    - nix flake update /etc/nixos
-    - nixos-rebuild switch --flake /etc/nixos#$(hostname)
-    - Store version in: /var/lib/it-update/version
-  - Must be SAFE when offline (no failure loops)
+Implement a pull-based update agent with FULL MODE CONTROL.
+
+Remote version flag URL (EXACT):
+https://raw.githubusercontent.com/minhvip20956/bnixos/main/version.txt
+
+The version.txt file format MUST be parsed as key=value pairs:
+
+Example:
+version=2025-12-20
+mode=upgrade
+target=24.11
+
+Rules:
+- version: arbitrary string, used as rollout trigger
+- mode:
+  - normal  -> regular update ONLY
+  - upgrade -> allow major NixOS upgrade
+- target:
+  - Target NixOS release (e.g. 24.11)
+  - Only used when mode=upgrade
+
+AGENT BEHAVIOR:
+- Implement as systemd oneshot service + timer
+- Runs as root
+- Poll remote version.txt with cache-bypass (?t=timestamp)
+- If version != local stored version:
+  - Parse mode and target
+  - If mode=normal:
+      - DO NOT run nix flake update
+      - Run: nixos-rebuild switch --flake /etc/nixos#$(hostname)
+  - If mode=upgrade:
+      - Update nixpkgs input to target release (nixos-${target})
+      - Run: nix flake update /etc/nixos
+      - Run: nixos-rebuild switch --flake /etc/nixos#$(hostname)
+- Store applied version in:
+  /var/lib/it-update/version
+- Must be SAFE when offline (no failure loops, exit 0)
 
 ====================================================
 INSTALLER ISO
 ====================================================
 - Use Calamares graphical installer
-- Import:
+- Import EXACT module:
   <nixpkgs/nixos/modules/installer/cd-dvd/installation-cd-graphical-calamares.nix>
 - ISO filename:
   bnixos-installer.iso
@@ -129,7 +157,11 @@ FILES / STRUCTURE TO CREATE
 ====================================================
 - flake.nix
 - iso.nix
-- version.txt (initial content example: 2025-12-18-prod-001)
+- version.txt
+  - Initial content MUST be:
+    version=2025-12-20
+    mode=normal
+    target=24.05
 - modules/
   - base.nix
   - desktop.nix
@@ -160,3 +192,32 @@ OUTPUT
 2) Output FULL content of each created/modified file
 
 START NOW.
+
+
+
+
+Work ONLY in this workspace. Do NOT use git.
+
+Refactor the bnixos flake project to support a single central env file for future major upgrades.
+
+1) Create env.nix at repo root with:
+- nixosRelease (default "24.05")
+- isoName (default "bnixos-installer.iso")
+- versionUrl (default "https://raw.githubusercontent.com/minhvip20956/bnixos/main/version.txt")
+
+2) Modify flake.nix to read env.nix and set:
+inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-${env.nixosRelease}"
+
+3) Modify iso.nix to use env.isoName as the ISO filename.
+
+4) Modify the update agent:
+- Parse version.txt key=value fields (version/mode/target)
+- If mode=normal: do NOT run nix flake update; only nixos-rebuild switch
+- If mode=upgrade:
+  - update env.nix nixosRelease to target (e.g. 24.11)
+  - then run nix flake update /etc/nixos
+  - then nixos-rebuild switch --flake /etc/nixos#$(hostname)
+- Keep offline-safe behavior (exit 0 on network failure)
+
+5) Output the final repo tree and the full content of each changed file.
+No explanations, no questions.
