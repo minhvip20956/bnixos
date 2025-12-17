@@ -1,58 +1,68 @@
-You are a senior NixOS engineer working inside this VS Code workspace (repo bnixos).
+You are a senior NixOS engineer. Work ONLY inside this VS Code workspace (repo bnixos).
+DO NOT run any git commands. Do NOT commit or push. Just create/modify files.
 
-TASK: Implement the following changes in the existing bnixos ISO builder project, then commit and push.
+GOAL:
+Implement:
+- GNOME + GDM (Wayland) installer ISO (Calamares) remains working
+- Snap enabled and users are allowed to install snap apps (NO restrictions)
+- Flatpak enabled with GNOME Software + proper portals
+- Per-user baseline apps: LibreOffice + Chromium installed automatically on first login via Flatpak --user
+- Vietnamese input method: IBus + Bamboo
+- GNOME less “technical”: hide technical tools but keep essential functionality
 
-REQUIREMENTS TO IMPLEMENT:
+REQUIREMENTS (IMPLEMENT EXACTLY):
 
-1) Preinstall office + browser for EACH USER (per-user, not system-wide):
-- On first login for any user, automatically install via Flatpak --user:
+1) Per-user baseline apps (Flatpak):
+- On first login for ANY user, auto-install via Flatpak --user:
   - org.libreoffice.LibreOffice
   - org.chromium.Chromium
-- Also ensure Flathub remote exists for the user
-- Must be idempotent (use a marker file under ~/.config/bnixos/.flatpak_bootstrapped)
-- Must not require sudo
-- Must not break offline boot (if network unavailable, exit cleanly and retry on next login)
+- Add Flathub per-user remote if missing:
+  - https://dl.flathub.org/repo/flathub.flatpakrepo
+- Must be idempotent: create marker file:
+  - ~/.config/bnixos/.flatpak_bootstrapped
+- Must NOT require sudo
+- Must be safe offline:
+  - If network unavailable, exit 0 (no failure loops), and retry next login
 
-2) Vietnamese input method:
-- Enable IBus with Bamboo as the default IM framework
-- Ensure packages are included so GNOME can use it immediately
+2) Vietnamese typing:
+- Enable IBus and Bamboo engine system-wide so GNOME can use it immediately:
+  - i18n.inputMethod.enabled = "ibus"
+  - include bamboo engine
 
-3) GNOME “less technical” menu, but keep essential features:
-- Keep GNOME Settings, Files, GNOME Software, networking, bluetooth, printers, etc.
-- Remove/hide technical tools from the default menu by excluding these GNOME packages:
+3) GNOME lockdown / de-tech menu:
+- Keep Settings, Files, GNOME Software, networking, bluetooth, printers.
+- Exclude these packages from GNOME default menu:
   - gnome-terminal
   - gnome-system-monitor
   - gnome-logs
   - gnome-disk-utility
   - gnome-connections
-- Disable GNOME command-line prompt (Alt+F2 / run command) via dconf:
+- Disable “Run command” (Alt+F2) via dconf:
   - org/gnome/desktop/lockdown disable-command-line = true
-- Ensure programs.dconf.enable = true
+- Ensure:
+  - programs.dconf.enable = true
 
-FILES TO MODIFY (use existing structure; create module if missing but prefer modifying):
-- modules/snap-flatpak.nix  (add flatpak bootstrap user service + ensure gnome-software + portals)
-- modules/desktop.nix       (add ibus + bamboo)
-- modules/hardening.nix     (gnome exclude packages + dconf lockdown)
+FILES / STRUCTURE:
+Use existing structure if present; if missing, create:
+- flake.nix
+- iso.nix (imports installation-cd-graphical-calamares.nix)
+- modules/
+  - base.nix
+  - desktop.nix            (IBus + Bamboo here)
+  - users.nix
+  - snap-flatpak.nix       (Flatpak+GNOME Software+portal + per-user bootstrap service here)
+  - update-agent.nix
+  - hardening.nix          (GNOME exclude packages + dconf lockdown here)
+- version.txt (keep existing if already present)
 
 SNAP RULE:
-- Snap is enabled and USERS ARE ALLOWED TO INSTALL SNAP APPS.
-- Do NOT add any restriction to snap install or snapctl.
+- Enable snapd (services.snap.enable = true)
+- Enable AppArmor + squashfs
+- DO NOT restrict snap install / snapctl in any way.
 
-QUALITY RULES:
-- Use valid Nix syntax.
-- Keep changes minimal, clean, production-ready.
-- Add English comments inside code where useful.
-- After modifications, run:
-  - nix fmt (if available) OR format reasonably
-  - nix flake check (if feasible) OR at least ensure `nix eval` sanity on the iso configuration
-
-GIT:
-- git status
-- git add -A
-- git commit -m "Add per-user baseline apps, Vietnamese input, and GNOME lockdown"
-- git push -u origin HEAD
-
-OUTPUT:
-- Show the final repo tree and the final diffs/changed file contents.
+OUTPUT FORMAT:
+- First show the final repository tree.
+- Then output the full content of each file you created/modified.
+- No explanations, no questions.
 
 START NOW.
