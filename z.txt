@@ -1,223 +1,60 @@
-You are a senior NixOS infrastructure and release engineer.
+You are a senior NixOS engineer. Work ONLY in this VS Code workspace (repo bnixos).
+Do NOT run git commands. Do NOT commit or push. Create/modify files in the workspace.
 
-WORK MODE:
-- Work ONLY inside this VS Code workspace (repo bnixos).
-- The repository is EMPTY.
-- CREATE and MODIFY files directly in the workspace.
-- DO NOT run git commands.
-- DO NOT commit or push.
-- Write files into the workspace (not paste-only output).
+TASK: Implement a SINGLE installer ISO that offers 3 installation choices at install time:
+- Prod
+- Dev
+- Nightly
 
-====================================================
-GOAL
-====================================================
-Create a COMPLETE, PRODUCTION-READY NixOS INSTALLER ISO project
-for enterprise laptops, fully controlled by IT.
+REQUIREMENT:
+- The ISO should boot into GNOME live session as before.
+- In the GNOME app menu (or on desktop), provide 3 launchers:
+  1) "Install BNIXOS (Prod)"
+  2) "Install BNIXOS (Dev)"
+  3) "Install BNIXOS (Nightly)"
+- Each launcher must:
+  - Write the selected track to /tmp/bnixos-track (exact content: prod|dev|nightly)
+  - Then launch Calamares installer
+- During installation, ensure the installed system ends up with:
+  - /etc/bnixos/track containing the chosen track
+  - Default track must be "prod" if /tmp/bnixos-track is missing
 
-Result:
-- Graphical NixOS installer ISO (Calamares)
-- USB + EFI bootable
-- After install: immutable, centrally managed, user-safe
-- One-command ISO build using nix build
+IMPLEMENTATION DETAILS (must be production-ready):
+1) Create scripts:
+- /usr/local/bin/bnixos-install-prod
+- /usr/local/bin/bnixos-install-dev
+- /usr/local/bin/bnixos-install-nightly
+Each script writes /tmp/bnixos-track and execs calamares.
+Use English comments in scripts.
 
-====================================================
-BASE SYSTEM
-====================================================
-- OS: NixOS 24.05 or newer
-- Flakes ONLY (no channels)
-- systemd-boot (UEFI)
-- Rollback enabled (keep last 3 generations)
-- AppArmor enabled
-- system.stateVersion MUST be set and MUST NOT auto-change
+2) Create .desktop launchers (GNOME):
+- Place them where GNOME will show them in the app grid (e.g. /usr/share/applications).
+Ensure they have proper Name/Icon/Exec.
 
-====================================================
-DESKTOP
-====================================================
-- GNOME (Wayland)
-- GDM display manager
-- GNOME stable from nixpkgs (no beta, no nightly)
+3) Integrate with Calamares so that at the END of install it writes the track into the target system:
+- Use a Calamares module configuration approach (shellprocess module) that runs after filesystem is mounted.
+- The shell command must write to the target root (mounted at /mnt by Calamares):
+  - mkdir -p /mnt/etc/bnixos
+  - if /tmp/bnixos-track exists, copy it; else write "prod"
+  - chmod 0644 /mnt/etc/bnixos/track
+- Ensure this runs reliably near the end of the Calamares module sequence.
 
-====================================================
-USERS
-====================================================
-- root:
-  - Fixed password hash (placeholder OK)
-- staff:
-  - Normal user
-  - NO sudo
-  - Cannot run nix commands
+4) Keep all existing bnixos requirements unchanged:
+- NixOS flake ISO with Calamares graphical installer module
+- GNOME+GDM, Snap enabled (users allowed to install snap apps), Flatpak enabled
+- Per-user first-login Flatpak bootstrap installs LibreOffice+Chromium
+- IBus + Bamboo enabled
+- GNOME de-tech (exclude terminal, logs, disks, etc) + dconf disable-command-line
+- Update agent with version.txt / version.dev.txt / nightly behavior already specified
 
-====================================================
-APPLICATION MODEL
-====================================================
+FILES:
+- Modify iso.nix and/or appropriate modules to add the scripts and .desktop files to the ISO environment.
+- Add any Calamares config overlay files needed (under a reasonable directory in repo, then include into ISO).
+- Keep code valid Nix syntax.
 
-SNAP:
-- Enable snapd
-- Enable squashfs support
-- Users ARE ALLOWED to install snap apps
-- DO NOT restrict snap install or snapctl
+OUTPUT:
+- Show final repository tree
+- Output full contents of all created/modified files
+- No explanations, no questions
 
-FLATPAK:
-- Enable Flatpak
-- Enable GNOME Software
-- Enable xdg-desktop-portal for GNOME
-- User-level Flatpak installs must work
-
-BASELINE APPS (CRITICAL):
-- For EACH USER, on FIRST LOGIN only:
-  - Automatically install via Flatpak --user:
-    - org.libreoffice.LibreOffice
-    - org.chromium.Chromium
-  - Add Flathub remote if missing:
-    https://dl.flathub.org/repo/flathub.flatpakrepo
-  - Use marker file to ensure idempotency:
-    ~/.config/bnixos/.flatpak_bootstrapped
-  - Must NOT require sudo
-  - Must be SAFE when offline (exit cleanly, retry next login)
-
-====================================================
-VIETNAMESE INPUT
-====================================================
-- Enable IBus as input method framework
-- Enable Bamboo engine
-- Must work immediately in GNOME
-- Support Telex and VNI
-
-====================================================
-GNOME LOCKDOWN (USER-FRIENDLY)
-====================================================
-- Keep essential features:
-  - Settings
-  - Files
-  - GNOME Software
-  - Networking / Bluetooth / Printers
-- Remove / hide technical tools by excluding:
-  - gnome-terminal
-  - gnome-system-monitor
-  - gnome-logs
-  - gnome-disk-utility
-  - gnome-connections
-- Disable GNOME command prompt (Alt+F2):
-  - org/gnome/desktop/lockdown disable-command-line = true
-- Ensure programs.dconf.enable = true
-
-====================================================
-IT-CONTROLLED UPDATE MODEL (CRITICAL)
-====================================================
-Implement a pull-based update agent with FULL MODE CONTROL.
-
-Remote version flag URL (EXACT):
-https://raw.githubusercontent.com/minhvip20956/bnixos/main/version.txt
-
-The version.txt file format MUST be parsed as key=value pairs:
-
-Example:
-version=2025-12-20
-mode=upgrade
-target=24.11
-
-Rules:
-- version: arbitrary string, used as rollout trigger
-- mode:
-  - normal  -> regular update ONLY
-  - upgrade -> allow major NixOS upgrade
-- target:
-  - Target NixOS release (e.g. 24.11)
-  - Only used when mode=upgrade
-
-AGENT BEHAVIOR:
-- Implement as systemd oneshot service + timer
-- Runs as root
-- Poll remote version.txt with cache-bypass (?t=timestamp)
-- If version != local stored version:
-  - Parse mode and target
-  - If mode=normal:
-      - DO NOT run nix flake update
-      - Run: nixos-rebuild switch --flake /etc/nixos#$(hostname)
-  - If mode=upgrade:
-      - Update nixpkgs input to target release (nixos-${target})
-      - Run: nix flake update /etc/nixos
-      - Run: nixos-rebuild switch --flake /etc/nixos#$(hostname)
-- Store applied version in:
-  /var/lib/it-update/version
-- Must be SAFE when offline (no failure loops, exit 0)
-
-====================================================
-INSTALLER ISO
-====================================================
-- Use Calamares graphical installer
-- Import EXACT module:
-  <nixpkgs/nixos/modules/installer/cd-dvd/installation-cd-graphical-calamares.nix>
-- ISO filename:
-  bnixos-installer.iso
-- EFI + USB bootable
-
-====================================================
-FILES / STRUCTURE TO CREATE
-====================================================
-- flake.nix
-- iso.nix
-- version.txt
-  - Initial content MUST be:
-    version=2025-12-20
-    mode=normal
-    target=24.05
-- modules/
-  - base.nix
-  - desktop.nix
-  - users.nix
-  - snap-flatpak.nix
-  - update-agent.nix
-  - hardening.nix
-- README.md with:
-  - How to install Nix on Rocky Linux
-  - How to enable flakes
-  - Exact nix build command
-  - Where the ISO output is located
-
-====================================================
-QUALITY RULES
-====================================================
-- Valid Nix syntax ONLY
-- Clean, production-ready code
-- English comments inside code
-- No TODOs (except password hash)
-- Do NOT ask questions
-- Do NOT explain concepts
-
-====================================================
-OUTPUT
-====================================================
-1) Show final repository tree
-2) Output FULL content of each created/modified file
-
-START NOW.
-
-
-
-
-Work ONLY in this workspace. Do NOT use git.
-
-Refactor the bnixos flake project to support a single central env file for future major upgrades.
-
-1) Create env.nix at repo root with:
-- nixosRelease (default "24.05")
-- isoName (default "bnixos-installer.iso")
-- versionUrl (default "https://raw.githubusercontent.com/minhvip20956/bnixos/main/version.txt")
-
-2) Modify flake.nix to read env.nix and set:
-inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-${env.nixosRelease}"
-
-3) Modify iso.nix to use env.isoName as the ISO filename.
-
-4) Modify the update agent:
-- Parse version.txt key=value fields (version/mode/target)
-- If mode=normal: do NOT run nix flake update; only nixos-rebuild switch
-- If mode=upgrade:
-  - update env.nix nixosRelease to target (e.g. 24.11)
-  - then run nix flake update /etc/nixos
-  - then nixos-rebuild switch --flake /etc/nixos#$(hostname)
-- Keep offline-safe behavior (exit 0 on network failure)
-
-5) Output the final repo tree and the full content of each changed file.
-No explanations, no questions.
+Start now.
